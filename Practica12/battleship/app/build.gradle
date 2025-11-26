@@ -39,3 +39,8 @@ tasks.named('test') {
     // Run tests with the classic JUnit 4 runner.
     useJUnit()
 }
+
+tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+    // Ensure Swing (java.desktop) types like JOptionPane are available when compiling.
+    options.compilerArgs.addAll(['--add-modules', 'java.desktop'])
+}
