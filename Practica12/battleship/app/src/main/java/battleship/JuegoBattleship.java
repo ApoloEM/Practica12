@@ -1,148 +1,114 @@
 package battleship;
 
-// JuegoBattleship.java
 import java.util.*;
 
 public class JuegoBattleship {
-    private static final int TAMANIO_TABLERO = 10;
-    private char[][] tableroPropio;
-    private char[][] tableroEnemigo;
-    private Map<String, Integer> barcos;
-    private Map<String, Integer> impactosPorBarco;
-    private Set<String> posicionesDisparadas;
-    
+    private final Tablero tableroPropio;
+    private final Tablero tableroEnemigo;
+    private final Map<String, Integer> barcosSalud;
+
     public JuegoBattleship() {
-        tableroPropio = new char[TAMANIO_TABLERO][TAMANIO_TABLERO];
-        tableroEnemigo = new char[TAMANIO_TABLERO][TAMANIO_TABLERO];
-        inicializarTableros();
-        
-        barcos = new HashMap<>();
-        barcos.put("PORTAAVIONES", 5);
-        barcos.put("ACORAZADO", 4);
-        barcos.put("CRUCERO", 3);
-        barcos.put("SUBMARINO", 3);
-        barcos.put("DESTRUCTOR", 2);
-        
-        impactosPorBarco = new HashMap<>();
-        for (String barco : barcos.keySet()) {
-            impactosPorBarco.put(barco, 0);
-        }
-        
-        posicionesDisparadas = new HashSet<>();
+        tableroPropio = new Tablero();
+        tableroEnemigo = new Tablero();
+        barcosSalud = new HashMap<>();
+        inicializarSaludBarcos();
     }
-    
-    private void inicializarTableros() {
-        for (int i = 0; i < TAMANIO_TABLERO; i++) {
-            for (int j = 0; j < TAMANIO_TABLERO; j++) {
-                tableroPropio[i][j] = '~'; // Agua
-                tableroEnemigo[i][j] = '?'; // Desconocido
-            }
-        }
+
+    private void inicializarSaludBarcos() {
+        barcosSalud.put("PORTAAVIONES", 5);
+        barcosSalud.put("ACORAZADO", 4);
+        barcosSalud.put("CRUCERO", 3);
+        barcosSalud.put("SUBMARINO", 3);
+        barcosSalud.put("DESTRUCTOR", 2);
     }
-    
+
     public void colocarBarcosAutomaticamente() {
-        Random random = new Random();
-        
-        for (Map.Entry<String, Integer> entrada : barcos.entrySet()) {
-            String nombreBarco = entrada.getKey();
-            int tamanio = entrada.getValue();
-            boolean colocado = false;
+        colocarBarco(5, 'P');
+        colocarBarco(4, 'A');
+        colocarBarco(3, 'C');
+        colocarBarco(3, 'S');
+        colocarBarco(2, 'D');
+    }
+
+    private void colocarBarco(int longitud, char simbolo) {
+        Random rnd = new Random();
+        boolean colocado = false;
+        while (!colocado) {
+            int f = rnd.nextInt(10);
+            int c = rnd.nextInt(10);
+            boolean horizontal = rnd.nextBoolean();
             
-            while (!colocado) {
-                boolean horizontal = random.nextBoolean();
-                int fila = random.nextInt(TAMANIO_TABLERO);
-                int columna = random.nextInt(TAMANIO_TABLERO);
-                
-                if (puedeColocarBarco(fila, columna, tamanio, horizontal)) {
-                    colocarBarco(fila, columna, tamanio, horizontal, nombreBarco.charAt(0));
-                    colocado = true;
+            if (puedeColocar(f, c, longitud, horizontal)) {
+                for (int i = 0; i < longitud; i++) {
+                    int ff = horizontal ? f : f + i;
+                    int cc = horizontal ? c + i : c;
+                    tableroPropio.getCelda(new Posicion(ff, cc)).colocarBarco(simbolo);
                 }
+                colocado = true;
             }
         }
     }
-    
-    private boolean puedeColocarBarco(int fila, int columna, int tamanio, boolean horizontal) {
-        if (horizontal) {
-            if (columna + tamanio > TAMANIO_TABLERO) return false;
-            for (int i = columna; i < columna + tamanio; i++) {
-                if (tableroPropio[fila][i] != '~') return false;
-            }
-        } else {
-            if (fila + tamanio > TAMANIO_TABLERO) return false;
-            for (int i = fila; i < fila + tamanio; i++) {
-                if (tableroPropio[i][columna] != '~') return false;
-            }
+
+    private boolean puedeColocar(int f, int c, int len, boolean horiz) {
+        if (horiz && c + len > 10) return false;
+        if (!horiz && f + len > 10) return false;
+        for (int i = 0; i < len; i++) {
+            int ff = horiz ? f : f + i;
+            int cc = horiz ? c + i : c;
+            if (tableroPropio.getCelda(new Posicion(ff, cc)).tieneBarco()) return false;
         }
         return true;
     }
-    
-    private void colocarBarco(int fila, int columna, int tamanio, boolean horizontal, char simbolo) {
-        if (horizontal) {
-            for (int i = columna; i < columna + tamanio; i++) {
-                tableroPropio[fila][i] = simbolo;
-            }
-        } else {
-            for (int i = fila; i < fila + tamanio; i++) {
-                tableroPropio[i][columna] = simbolo;
-            }
+
+    public ResultadoDisparo recibirDisparo(Posicion p) {
+        Celda celda = tableroPropio.getCelda(p);
+        
+        if (celda.estaImpactada()) {
+            return new ResultadoDisparo(TipoResultado.YA_DISPARADO, p);
         }
-    }
-    
-    public boolean recibirDisparo(int fila, int columna) {
-        // Verificar si ya fue disparado aquí
-        if (tableroPropio[fila][columna] == 'X' || tableroPropio[fila][columna] == 'O') {
-            return false; // Ya fue disparado aquí
+
+        celda.recibirImpacto();
+
+        if (celda.tieneBarco()) {
+            String nombreBarco = obtenerNombreBarco(celda.getSimboloBarco());
+            disminuirSaludBarco(nombreBarco);
+            
+            if (estaHundido(nombreBarco)) {
+                return new ResultadoDisparo(TipoResultado.HUNDIDO, p, nombreBarco);
+            }
+            return new ResultadoDisparo(TipoResultado.IMPACTO, p);
         }
         
-        if (tableroPropio[fila][columna] != '~') {
-            // ¡Impacto! - encontrar qué barco fue golpeado
-            char caracterBarco = tableroPropio[fila][columna];
-            String tipoBarco = obtenerTipoBarcoDesdeCaracter(caracterBarco);
-            
-            // VERIFICACIÓN DE SEGURIDAD AÑADIDA
-            if (impactosPorBarco.containsKey(tipoBarco)) {
-                impactosPorBarco.put(tipoBarco, impactosPorBarco.get(tipoBarco) + 1);
-            } else {
-                // Si el barco no está en el mapa, lo agregamos
-                System.out.println("Advertencia: Barco no registrado '" + tipoBarco + "' encontrado. Registrando...");
-                impactosPorBarco.put(tipoBarco, 1);
-            }
-            
-            tableroPropio[fila][columna] = 'X'; // Barco impactado
-            return true;
-        } else {
-            tableroPropio[fila][columna] = 'O'; // Agua impactada
-            return false;
+        return new ResultadoDisparo(TipoResultado.AGUA, p);
+    }
+
+    public void registrarResultadoAjeno(ResultadoDisparo res) {
+        if (res.getTipo() == TipoResultado.YA_DISPARADO) return;
+
+        Celda celda = tableroEnemigo.getCelda(res.getPosicion());
+        celda.recibirImpacto();
+        if (res.getTipo() == TipoResultado.IMPACTO || res.getTipo() == TipoResultado.HUNDIDO) {
+            celda.colocarBarco('X');
         }
     }
-    
-    public void registrarImpacto(int fila, int columna) {
-        tableroEnemigo[fila][columna] = 'X';
-        posicionesDisparadas.add(fila + "," + columna);
+
+    private void disminuirSaludBarco(String nombre) {
+        barcosSalud.put(nombre, barcosSalud.get(nombre) - 1);
+    }
+
+    private boolean estaHundido(String nombre) {
+        return barcosSalud.get(nombre) <= 0;
     }
     
-    public void registrarFallo(int fila, int columna) {
-        tableroEnemigo[fila][columna] = 'O';
-        posicionesDisparadas.add(fila + "," + columna);
-    }
-    
-    public boolean yaDisparado(int fila, int columna) {
-        return posicionesDisparadas.contains(fila + "," + columna);
-    }
-    
-    public String obtenerTipoBarcoEn(int fila, int columna) {
-        char c = tableroPropio[fila][columna];
-        // Si es un impacto previo, buscar en la posición original
-        if (c == 'X') {
-            // En un juego real necesitarías guardar el tipo de barco original
-            // Por ahora retornamos "DESCONOCIDO"
-            return "DESCONOCIDO";
+    public boolean hePerdido() {
+        for (int salud : barcosSalud.values()) {
+            if (salud > 0) return false;
         }
-        return obtenerTipoBarcoDesdeCaracter(c);
+        return true;
     }
-    
-    private String obtenerTipoBarcoDesdeCaracter(char c) {
-        switch (c) {
+
+    private String obtenerNombreBarco(char c) {
+        switch(c) {
             case 'P': return "PORTAAVIONES";
             case 'A': return "ACORAZADO";
             case 'C': return "CRUCERO";
@@ -151,61 +117,7 @@ public class JuegoBattleship {
             default: return "DESCONOCIDO";
         }
     }
-    
-    public boolean estaBarcoHundido(String tipoBarco) {
-        // VERIFICACIÓN DE SEGURIDAD AÑADIDA
-        if (!impactosPorBarco.containsKey(tipoBarco) || !barcos.containsKey(tipoBarco)) {
-            return false;
-        }
-        
-        int impactos = impactosPorBarco.get(tipoBarco);
-        int tamanio = barcos.get(tipoBarco);
-        return impactos >= tamanio;
-    }
-    
-    public boolean todosBarcosHundidos() {
-        for (String barco : barcos.keySet()) {
-            if (!estaBarcoHundido(barco)) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    public void mostrarTableroPropio() {
-        System.out.println("\n=== TU TABLERO ===");
-        mostrarTablero(tableroPropio);
-        
-        // Mostrar estado de barcos
-        System.out.println("\nEstado de tus barcos:");
-        for (String barco : barcos.keySet()) {
-            int impactos = impactosPorBarco.getOrDefault(barco, 0);
-            int tamanio = barcos.get(barco);
-            String estado = (impactos >= tamanio) ? "HUNDIDO" : impactos + "/" + tamanio;
-            System.out.println("  " + barco + ": " + estado);
-        }
-    }
-    
-    public void mostrarTableroEnemigo() {
-        System.out.println("\n=== TABLERO ENEMIGO ===");
-        mostrarTablero(tableroEnemigo);
-    }
-    
-    private void mostrarTablero(char[][] tablero) {
-        System.out.print("  ");
-        for (int i = 0; i < TAMANIO_TABLERO; i++) {
-            System.out.print(i + " ");
-        }
-        System.out.println();
-        
-        for (int i = 0; i < TAMANIO_TABLERO; i++) {
-            System.out.print(i + " ");
-            for (int j = 0; j < TAMANIO_TABLERO; j++) {
-                System.out.print(tablero[i][j] + " ");
-            }
-            System.out.println();
-        }
-        
-        System.out.println("\nLeyenda: ~=Agua, ?=Desconocido, X=Impacto, O=Fallo, Letras=Barcos");
-    }
+
+    public Tablero getTableroPropio() { return tableroPropio; }
+    public Tablero getTableroEnemigo() { return tableroEnemigo; }
 }
